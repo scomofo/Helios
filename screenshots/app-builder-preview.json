@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Helios",
+      "hasCanvas": false,
+      "bodyTextLen": 395,
+      "bodyTextHash": "091a9de51295d8ed56dbd50e03f73b0f4fc03680e4e6612c44f07c531447cfca",
+      "bodyTextPrefix": "Helios OBSERVATORY ELAPSED 0.00 yr Sun Mercury Venus Earth Mars ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Helios",
+      "hasCanvas": false,
+      "bodyTextLen": 324,
+      "bodyTextHash": "5be907c866439f0ad49234e31b069e5e5cc842660c14600ea0c84a49654a2489",
+      "bodyTextPrefix": "Helios OBSERVATORY Sun Mercury Venus Earth Mars Jupiter Saturn U",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
