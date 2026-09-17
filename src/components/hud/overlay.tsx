@@ -1,9 +1,11 @@
-import { Captions, Orbit, Pause, Play, RotateCcw, Waves } from "lucide-react";
+import { Captions, Orbit, Pause, Play, Repeat, RotateCcw, Waves } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
   BODY_ORDER,
+  PLANETS,
+  bodyPosition,
   formatDiameter,
   getBody,
   kindLabel,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/solar/bodies";
 import { keplerLive } from "@/lib/solar/kepler";
 import { perturbLive } from "@/lib/solar/nbody";
+import { resonanceLive } from "@/lib/solar/resonance";
 import { sim } from "@/lib/solar/sim";
 import { useHelios } from "@/lib/solar/store";
 import { cn } from "@/lib/utils";
@@ -41,10 +44,19 @@ function SimClock() {
 function InfoPanel() {
   const focusedId = useHelios((s) => s.focusedId);
   const perturbed = useHelios((s) => s.perturbed);
+  const resonance = useHelios((s) => s.resonance);
   const body = getBody(focusedId);
   const t = useSimTime(80);
   const live = body.id === "sun" ? null : keplerLive(body, t);
   const tug = perturbed && live ? perturbLive(body.id, live.radiusAu) : null;
+  const lons: Partial<Record<BodyId, number>> = {};
+  const scratch = { x: 0, y: 0, z: 0 };
+  for (const p of PLANETS) {
+    bodyPosition(p, t, scratch);
+    lons[p.id] = Math.atan2(scratch.z, scratch.x);
+  }
+  const res = resonance ? resonanceLive(body.id, lons) : null;
+  const hit = res?.hits[0];
 
   return (
     <section
@@ -71,7 +83,41 @@ function InfoPanel() {
         <dt className="text-muted">Moons</dt>
         <dd className="tabular-nums">{body.id === "sun" ? "—" : body.moonsCount}</dd>
       </dl>
-      {live ? (
+      {res && (hit || body.id === "sun") ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-xs tracking-[0.2em] text-muted uppercase">Resonance</p>
+          <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+            {hit ? (
+              <>
+                <dt className="text-muted">Commensura</dt>
+                <dd className="tabular-nums">{hit.pair.name}</dd>
+                <dt className="text-muted">Period ratio</dt>
+                <dd className="tabular-nums">{hit.ratio.toFixed(3)}</dd>
+                <dt className="text-muted">Offset</dt>
+                <dd className="tabular-nums">{hit.errorPct.toFixed(2)}%</dd>
+                <dt className="text-muted">Synodic</dt>
+                <dd className="tabular-nums">{hit.synodic.toFixed(2)} yr</dd>
+                <dt className="text-muted">Conjunction</dt>
+                <dd className="tabular-nums">{hit.ddeg.toFixed(1)}°</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-muted">Kirkwood</dt>
+                <dd>3:1 · 5:2 · 2:1</dd>
+                <dt className="text-muted">Jupiter–Saturn</dt>
+                <dd className="tabular-nums">5 : 2</dd>
+                <dt className="text-muted">Neptune–Pluto</dt>
+                <dd className="tabular-nums">3 : 2</dd>
+              </>
+            )}
+          </dl>
+          <p className="mt-3 text-xs leading-relaxed text-muted">
+            {hit
+              ? hit.pair.blurb
+              : "Integer period ratios lock tugs in place. Asteroids vanish at Jupiter’s Kirkwood gaps; Pluto is shepherded 3:2 with Neptune."}
+          </p>
+        </div>
+      ) : live ? (
         <div className="mt-4 border-t border-border pt-3">
           <p className="text-xs tracking-[0.2em] text-muted uppercase">{perturbed ? "Perturbed" : "Kepler"}</p>
           <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
@@ -109,13 +155,11 @@ function InfoPanel() {
           </p>
         </div>
       ) : (
-        <>
-          <p className="mt-4 text-sm leading-relaxed text-pretty text-muted">
-            {perturbed
-              ? "Every planet pulls on every other. The two-body ellipse is only the first approximation — Jupiter writes the rest."
-              : body.summary}
-          </p>
-        </>
+        <p className="mt-4 text-sm leading-relaxed text-pretty text-muted">
+          {perturbed
+            ? "Every planet pulls on every other. The two-body ellipse is only the first approximation — Jupiter writes the rest."
+            : body.summary}
+        </p>
       )}
     </section>
   );
@@ -127,11 +171,13 @@ function Transport() {
   const showLabels = useHelios((s) => s.showLabels);
   const showTrails = useHelios((s) => s.showTrails);
   const perturbed = useHelios((s) => s.perturbed);
+  const resonance = useHelios((s) => s.resonance);
   const togglePaused = useHelios((s) => s.togglePaused);
   const setSpeed = useHelios((s) => s.setSpeed);
   const toggleLabels = useHelios((s) => s.toggleLabels);
   const toggleTrails = useHelios((s) => s.toggleTrails);
   const togglePerturbed = useHelios((s) => s.togglePerturbed);
+  const toggleResonance = useHelios((s) => s.toggleResonance);
   const resetView = useHelios((s) => s.resetView);
 
   return (
@@ -195,6 +241,8 @@ function Transport() {
           <Orbit className="size-3.5" />
           Trails
         </Button>
+      </div>
+      <div className="mt-2 flex gap-2">
         <Button
           variant="muted"
           size="sm"
@@ -204,6 +252,16 @@ function Transport() {
         >
           <Waves className="size-3.5" />
           Perturb
+        </Button>
+        <Button
+          variant="muted"
+          size="sm"
+          className="flex-1"
+          aria-pressed={resonance}
+          onClick={toggleResonance}
+        >
+          <Repeat className="size-3.5" />
+          Resonant
         </Button>
         <Button variant="muted" size="sm" onClick={resetView} aria-label="Reset view to the Sun">
           <RotateCcw className="size-3.5" />
@@ -260,8 +318,17 @@ export function Overlay() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const { togglePaused, toggleLabels, toggleTrails, togglePerturbed, resetView, setSpeed, setFocused, speed } =
-        useHelios.getState();
+      const {
+        togglePaused,
+        toggleLabels,
+        toggleTrails,
+        togglePerturbed,
+        toggleResonance,
+        resetView,
+        setSpeed,
+        setFocused,
+        speed,
+      } = useHelios.getState();
       const k = e.key.toLowerCase();
       if (k === " " || k === "k") {
         e.preventDefault();
@@ -269,6 +336,7 @@ export function Overlay() {
       } else if (k === "l") toggleLabels();
       else if (k === "t") toggleTrails();
       else if (k === "p") togglePerturbed();
+      else if (k === "m") toggleResonance();
       else if (k === "r" || k === "escape") resetView();
       else if (k === "[") setSpeed(Math.max(0.25, speed - 0.25));
       else if (k === "]") setSpeed(Math.min(16, speed + 0.25));

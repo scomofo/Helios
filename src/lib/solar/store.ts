@@ -34,6 +34,7 @@ type HeliosState = {
   showLabels: boolean;
   showTrails: boolean;
   perturbed: boolean;
+  resonance: boolean;
   hasInteracted: boolean;
   togglePaused: () => void;
   setSpeed: (speed: number) => void;
@@ -41,6 +42,7 @@ type HeliosState = {
   toggleLabels: () => void;
   toggleTrails: () => void;
   togglePerturbed: () => void;
+  toggleResonance: () => void;
   resetView: () => void;
 };
 
@@ -59,6 +61,7 @@ export const useHelios = create<HeliosState>((set, get) => ({
   showLabels: true,
   showTrails: true,
   perturbed: true,
+  resonance: true,
   hasInteracted: false,
   togglePaused: () => set((s) => ({ paused: !s.paused, hasInteracted: true })),
   setSpeed: (speed) => {
@@ -75,6 +78,7 @@ export const useHelios = create<HeliosState>((set, get) => ({
     persist(get());
   },
   togglePerturbed: () => set((s) => ({ perturbed: !s.perturbed, hasInteracted: true })),
+  toggleResonance: () => set((s) => ({ resonance: !s.resonance, hasInteracted: true })),
   resetView: () => set({ focusedId: "sun", hasInteracted: true }),
 }));
 

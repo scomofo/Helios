@@ -7,13 +7,26 @@ import {
   orbitPoints,
   type Body,
 } from "@/lib/solar/bodies";
-import { nbody } from "@/lib/solar/nbody";
+import { nbody, auToVisualRadius } from "@/lib/solar/nbody";
+import {
+  ASTEROIDS,
+  GALILEAN,
+  KIRKWOOD,
+  NAMED_RESONANCES,
+  asteroidPos,
+  lonOf,
+  plutoPos,
+  wrapPi,
+} from "@/lib/solar/resonance";
 import { DAYS_PER_SECOND, sim } from "@/lib/solar/sim";
 import { useHelios } from "@/lib/solar/store";
 
 type Vec = { x: number; y: number; z: number };
 
 const _pos: Vec = { x: 0, y: 0, z: 0 };
+const _ast: Vec = { x: 0, y: 0, z: 0 };
+const _pl: Vec = { x: 0, y: 0, z: 0 };
+const _b: Vec = { x: 0, y: 0, z: 0 };
 const ORBIT_CACHE = PLANETS.map((body) => ({
   body,
   pts: orbitPoints(body, 180),
@@ -151,7 +164,7 @@ export function Orrery2D() {
     }
 
     function paint() {
-      const { showTrails, showLabels, focusedId, perturbed } = useHelios.getState();
+      const { showTrails, showLabels, focusedId, perturbed, resonance } = useHelios.getState();
       ctx!.fillStyle = "#06070b";
       ctx!.fillRect(0, 0, w, h);
 
@@ -222,6 +235,68 @@ export function Orrery2D() {
         }
       }
 
+      if (resonance) {
+        const visPos = (id: (typeof PLANETS)[number]["id"], out: Vec) => {
+          if (perturbed) nbody.visualPos(id, out);
+          else bodyPosition(getBody(id), sim.time, out);
+        };
+
+        for (const g of KIRKWOOD) {
+          const vis = auToVisualRadius(g.au);
+          ctx!.beginPath();
+          let started = false;
+          for (let i = 0; i <= 96; i++) {
+            const a = (i / 96) * Math.PI * 2;
+            const p = project({ x: vis * Math.cos(a), y: 0, z: vis * Math.sin(a) });
+            if (p.z < 8) continue;
+            if (!started) {
+              ctx!.moveTo(p.sx, p.sy);
+              started = true;
+            } else ctx!.lineTo(p.sx, p.sy);
+          }
+          ctx!.strokeStyle = "rgba(236,236,232,0.22)";
+          ctx!.lineWidth = 1.4;
+          ctx!.setLineDash([2, 5]);
+          ctx!.stroke();
+          ctx!.setLineDash([]);
+          const tag = project({ x: vis * 0.22, y: 0, z: vis * 0.98 });
+          if (tag.z > 8) {
+            ctx!.font = "600 9px 'IBM Plex Sans', system-ui, sans-serif";
+            ctx!.fillStyle = "rgba(236,236,232,0.55)";
+            ctx!.fillText(g.label, tag.sx + 4, tag.sy);
+          }
+        }
+
+        for (const ast of ASTEROIDS) {
+          asteroidPos(ast, sim.time, _ast);
+          const p = project(_ast);
+          if (p.z < 8) continue;
+          ctx!.fillStyle = "rgba(201,208,218,0.55)";
+          ctx!.beginPath();
+          ctx!.arc(p.sx, p.sy, 1.05, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+
+        for (const pair of NAMED_RESONANCES) {
+          visPos(pair.inner, _pos);
+          visPos(pair.outer, _b);
+          const d = Math.abs(wrapPi(lonOf(_pos.x, _pos.z) - lonOf(_b.x, _b.z)));
+          if (d < 0.24) {
+            const far = project(_b);
+            ctx!.beginPath();
+            ctx!.moveTo(sunP.sx, sunP.sy);
+            ctx!.lineTo(far.sx, far.sy);
+            ctx!.strokeStyle = getBody(pair.inner).color;
+            ctx!.globalAlpha = 0.45;
+            ctx!.lineWidth = 1.5;
+            ctx!.stroke();
+            ctx!.globalAlpha = 1;
+          }
+        }
+
+        plutoPos(sim.time, _pl);
+      }
+
       drawGlobe(sunP.sx, sunP.sy, sunR, BODIES.sun.color, sunP.sx - 8, sunP.sy - 8, true);
 
       projected.length = 0;
@@ -258,6 +333,27 @@ export function Orrery2D() {
           ctx!.fillStyle = "#c5c1b8";
           ctx!.fill();
         }
+        if (item.body.id === "jupiter" && resonance && (focusedId === "jupiter" || cam.dist < 40)) {
+          for (const moon of GALILEAN) {
+            const ang = (sim.time / moon.days) * Math.PI * 2 + (moon.name === "Ganymede" ? Math.PI : 0);
+            const mx = item.sx + Math.cos(ang) * item.r * moon.r;
+            const my = item.sy + Math.sin(ang) * item.r * moon.r * 0.55;
+            ctx!.beginPath();
+            ctx!.arc(mx, my, Math.max(1.8, item.r * 0.16), 0, Math.PI * 2);
+            ctx!.fillStyle = moon.color;
+            ctx!.fill();
+            if (showLabels && focusedId === "jupiter") {
+              ctx!.font = "600 9px 'IBM Plex Sans', system-ui, sans-serif";
+              ctx!.fillStyle = "#ecece8";
+              ctx!.fillText(moon.name.toUpperCase(), mx + 6, my - 2);
+            }
+          }
+          if (focusedId === "jupiter") {
+            ctx!.font = "600 10px 'IBM Plex Sans', system-ui, sans-serif";
+            ctx!.fillStyle = "rgba(236,236,232,0.7)";
+            ctx!.fillText("4 : 2 : 1 LAPLACE", item.sx + item.r + 10, item.sy + item.r + 14);
+          }
+        }
         if (showLabels && focusedId !== item.body.id) {
           ctx!.font = "600 11px 'IBM Plex Sans', system-ui, sans-serif";
           ctx!.fillStyle = "#ecece8";
@@ -269,6 +365,29 @@ export function Orrery2D() {
         ctx!.font = "600 11px 'IBM Plex Sans', system-ui, sans-serif";
         ctx!.fillStyle = "#ecece8";
         ctx!.fillText("SUN", sunP.sx + sunR + 10, sunP.sy - 2);
+      }
+
+      if (resonance) {
+        const pPl = project(_pl);
+        if (pPl.z > 8) {
+          drawGlobe(pPl.sx, pPl.sy, Math.max(3.2, 0.35 * pPl.s), "#c4b7a2", sunP.sx, sunP.sy, false);
+          if (showLabels) {
+            ctx!.font = "600 10px 'IBM Plex Sans', system-ui, sans-serif";
+            ctx!.fillStyle = "#ecece8";
+            ctx!.fillText("PLUTO  3 : 2", pPl.sx + 8, pPl.sy - 2);
+          }
+        }
+        ctx!.font = "600 10px 'IBM Plex Sans', system-ui, sans-serif";
+        for (const pair of NAMED_RESONANCES) {
+          if (focusedId !== "sun" && focusedId !== pair.inner && focusedId !== pair.outer) continue;
+          const inner = projected.find((q) => q.body.id === pair.inner);
+          const outer = projected.find((q) => q.body.id === pair.outer);
+          if (!inner || !outer) continue;
+          const mx = (inner.sx + outer.sx) / 2;
+          const my = (inner.sy + outer.sy) / 2;
+          ctx!.fillStyle = "rgba(236,236,232,0.82)";
+          ctx!.fillText(pair.name, mx + 6, my);
+        }
       }
     }
 
