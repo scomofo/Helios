@@ -360,4 +360,16 @@ export function formatDiameter(km: number): string {
   return `${km.toLocaleString("en-US")} km`;
 }
 
+export function shadingNotes(id: BodyId): string {
+  if (id === "sun") return "Procedural corona · additive halo · G2V blackbody";
+  if (id === "mercury") return "Wrap Lambert · crater bump · airless terminator";
+  if (id === "venus") return "Thick Mie limb · soft wrap · low bump";
+  if (id === "earth") return "Ocean spec · city lights · cloud shadows · Rayleigh limb";
+  if (id === "mars") return "Wrap Lambert · polar frost · thin dust limb · bump";
+  if (id === "jupiter") return "Animated bands · wrap Lambert · Great Red Spot · limb";
+  if (id === "saturn") return "Banded albedo · ring-plane shadow · golden limb";
+  if (id === "uranus") return "Methane limb · faint bands · ring shadow";
+  return "Deep Rayleigh limb · dark vortex · wrap Lambert";
+}
+
 export { perihelionPosition, aphelionPosition, emptyFocusPosition };

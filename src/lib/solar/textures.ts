@@ -117,17 +117,22 @@ function venus(u: number, v: number): RGB {
   return mix3(mix3(dust, cream, n), cloud, smoothstep(0.45, 0.8, swirl));
 }
 
-function earth(u: number, v: number): RGB {
-  const lat = v * 2 - 1;
-  const warp = fbm(u * 4, v * 3, 3);
-  const n = fbm(u * 7 + warp * 1.4, v * 10, 5);
-  const landMask =
+function earthLand(u: number, v: number, n: number): number {
+  return (
     n * 0.62 +
     blob(u, v, 0.18, 0.48, 0.09, 0.16) * 0.55 +
     blob(u, v, 0.52, 0.5, 0.11, 0.2) * 0.7 +
     blob(u, v, 0.58, 0.68, 0.08, 0.1) * 0.45 +
     blob(u, v, 0.82, 0.42, 0.1, 0.14) * 0.5 +
-    blob(u, v, 0.88, 0.62, 0.07, 0.08) * 0.35;
+    blob(u, v, 0.88, 0.62, 0.07, 0.08) * 0.35
+  );
+}
+
+function earth(u: number, v: number): RGB {
+  const lat = v * 2 - 1;
+  const warp = fbm(u * 4, v * 3, 3);
+  const n = fbm(u * 7 + warp * 1.4, v * 10, 5);
+  const landMask = earthLand(u, v, n);
   const land = landMask > 0.58;
   const ice = smoothstep(0.68, 0.88, Math.abs(lat));
   const oceanDeep: RGB = [10, 38, 86];
@@ -144,6 +149,19 @@ function earth(u: number, v: number): RGB {
     if (landMask > 0.5) col = mix3(col, coast, 0.45);
   }
   return mix3(col, polar, ice);
+}
+
+function earthNight(u: number, v: number): RGB {
+  const warp = fbm(u * 4, v * 3, 3);
+  const n = fbm(u * 7 + warp * 1.4, v * 10, 5);
+  if (earthLand(u, v, n) <= 0.58) return [0, 0, 0];
+  const ice = smoothstep(0.68, 0.88, Math.abs(v * 2 - 1));
+  if (ice > 0.55) return [0, 0, 0];
+  const grid = hash2(Math.floor(u * 90), Math.floor(v * 48));
+  const speckle = hash2(u * 180, v * 96);
+  const city = grid > 0.72 ? Math.pow(speckle, 6) : 0;
+  const g = city * 255;
+  return [g, g * 0.72, g * 0.32];
 }
 
 function mars(u: number, v: number): RGB {
@@ -240,6 +258,14 @@ export function planetTexture(id: Exclude<BodyId, "sun">): THREE.Texture {
   const hiRes = id === "earth" || id === "jupiter" || id === "saturn";
   const tex = paint(hiRes ? 512 : 384, hiRes ? 256 : 192, painters[id]);
   cache.set(id, tex);
+  return tex;
+}
+
+export function nightTexture(): THREE.Texture {
+  const hit = cache.get("earth-night");
+  if (hit) return hit;
+  const tex = paint(512, 256, earthNight);
+  cache.set("earth-night", tex);
   return tex;
 }
 

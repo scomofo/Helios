@@ -1,4 +1,4 @@
-import { Captions, Orbit, Pause, Play, RotateCcw } from "lucide-react";
+import { Captions, Orbit, Pause, Play, RotateCcw, Waves } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -10,6 +10,7 @@ import {
   type BodyId,
 } from "@/lib/solar/bodies";
 import { keplerLive } from "@/lib/solar/kepler";
+import { perturbLive } from "@/lib/solar/nbody";
 import { sim } from "@/lib/solar/sim";
 import { useHelios } from "@/lib/solar/store";
 import { cn } from "@/lib/utils";
@@ -39,9 +40,11 @@ function SimClock() {
 
 function InfoPanel() {
   const focusedId = useHelios((s) => s.focusedId);
+  const perturbed = useHelios((s) => s.perturbed);
   const body = getBody(focusedId);
   const t = useSimTime(80);
   const live = body.id === "sun" ? null : keplerLive(body, t);
+  const tug = perturbed && live ? perturbLive(body.id, live.radiusAu) : null;
 
   return (
     <section
@@ -55,7 +58,7 @@ function InfoPanel() {
       <dl className="mt-4 grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted">Distance</dt>
         <dd className="tabular-nums">
-          {live ? `${live.radiusAu.toFixed(3)} AU` : "—"}
+          {tug ? `${tug.radiusAu.toFixed(3)} AU` : live ? `${live.radiusAu.toFixed(3)} AU` : "—"}
         </dd>
         <dt className="text-muted">Diameter</dt>
         <dd className="tabular-nums">{formatDiameter(body.diameterKm)}</dd>
@@ -70,25 +73,49 @@ function InfoPanel() {
       </dl>
       {live ? (
         <div className="mt-4 border-t border-border pt-3">
-          <p className="text-xs tracking-[0.2em] text-muted uppercase">Kepler</p>
+          <p className="text-xs tracking-[0.2em] text-muted uppercase">{perturbed ? "Perturbed" : "Kepler"}</p>
           <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
-            <dt className="text-muted">Eccentricity</dt>
-            <dd className="tabular-nums">{live.eccentricity.toFixed(4)}</dd>
-            <dt className="text-muted">Perihelion</dt>
-            <dd className="tabular-nums">{live.perihelionAu.toFixed(3)} AU</dd>
-            <dt className="text-muted">Aphelion</dt>
-            <dd className="tabular-nums">{live.aphelionAu.toFixed(3)} AU</dd>
-            <dt className="text-muted">Speed</dt>
-            <dd className="tabular-nums">{live.speedRatio.toFixed(2)}× circ.</dd>
-            <dt className="text-muted">P² / a³</dt>
-            <dd className="tabular-nums">{live.thirdLaw.toFixed(3)}</dd>
+            {tug ? (
+              <>
+                <dt className="text-muted">Δ vs Kepler</dt>
+                <dd className="tabular-nums">
+                  {tug.deltaAu >= 0 ? "+" : ""}
+                  {tug.deltaAu.toFixed(4)} AU
+                </dd>
+                <dt className="text-muted">Main tug</dt>
+                <dd>{tug.tug}</dd>
+                <dt className="text-muted">Mass gain</dt>
+                <dd className="tabular-nums">{tug.boost}×</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-muted">Eccentricity</dt>
+                <dd className="tabular-nums">{live.eccentricity.toFixed(4)}</dd>
+                <dt className="text-muted">Perihelion</dt>
+                <dd className="tabular-nums">{live.perihelionAu.toFixed(3)} AU</dd>
+                <dt className="text-muted">Aphelion</dt>
+                <dd className="tabular-nums">{live.aphelionAu.toFixed(3)} AU</dd>
+                <dt className="text-muted">Speed</dt>
+                <dd className="tabular-nums">{live.speedRatio.toFixed(2)}× circ.</dd>
+                <dt className="text-muted">P² / a³</dt>
+                <dd className="tabular-nums">{live.thirdLaw.toFixed(3)}</dd>
+              </>
+            )}
           </dl>
           <p className="mt-3 text-xs leading-relaxed text-muted">
-            I ellipse, Sun at a focus · II equal areas · III P² ∝ a³
+            {perturbed
+              ? "N-body tugs + exaggerated Mercury GR. Ellipses precess; dashed path is the two-body Kepler orbit."
+              : "I ellipse, Sun at a focus · II equal areas · III P² ∝ a³"}
           </p>
         </div>
       ) : (
-        <p className="mt-4 text-sm leading-relaxed text-pretty text-muted">{body.summary}</p>
+        <>
+          <p className="mt-4 text-sm leading-relaxed text-pretty text-muted">
+            {perturbed
+              ? "Every planet pulls on every other. The two-body ellipse is only the first approximation — Jupiter writes the rest."
+              : body.summary}
+          </p>
+        </>
       )}
     </section>
   );
@@ -99,10 +126,12 @@ function Transport() {
   const speed = useHelios((s) => s.speed);
   const showLabels = useHelios((s) => s.showLabels);
   const showTrails = useHelios((s) => s.showTrails);
+  const perturbed = useHelios((s) => s.perturbed);
   const togglePaused = useHelios((s) => s.togglePaused);
   const setSpeed = useHelios((s) => s.setSpeed);
   const toggleLabels = useHelios((s) => s.toggleLabels);
   const toggleTrails = useHelios((s) => s.toggleTrails);
+  const togglePerturbed = useHelios((s) => s.togglePerturbed);
   const resetView = useHelios((s) => s.resetView);
 
   return (
@@ -166,6 +195,16 @@ function Transport() {
           <Orbit className="size-3.5" />
           Trails
         </Button>
+        <Button
+          variant="muted"
+          size="sm"
+          className="flex-1"
+          aria-pressed={perturbed}
+          onClick={togglePerturbed}
+        >
+          <Waves className="size-3.5" />
+          Perturb
+        </Button>
         <Button variant="muted" size="sm" onClick={resetView} aria-label="Reset view to the Sun">
           <RotateCcw className="size-3.5" />
         </Button>
@@ -221,7 +260,7 @@ export function Overlay() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const { togglePaused, toggleLabels, toggleTrails, resetView, setSpeed, setFocused, speed } =
+      const { togglePaused, toggleLabels, toggleTrails, togglePerturbed, resetView, setSpeed, setFocused, speed } =
         useHelios.getState();
       const k = e.key.toLowerCase();
       if (k === " " || k === "k") {
@@ -229,6 +268,7 @@ export function Overlay() {
         togglePaused();
       } else if (k === "l") toggleLabels();
       else if (k === "t") toggleTrails();
+      else if (k === "p") togglePerturbed();
       else if (k === "r" || k === "escape") resetView();
       else if (k === "[") setSpeed(Math.max(0.25, speed - 0.25));
       else if (k === "]") setSpeed(Math.min(16, speed + 0.25));

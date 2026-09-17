@@ -2,6 +2,7 @@ import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import * as THREE from "three";
+import { Line2, LineGeometry, LineMaterial } from "three-stdlib";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   BODIES,
@@ -20,6 +21,11 @@ import {
 import { sim } from "@/lib/solar/sim";
 import { useHelios } from "@/lib/solar/store";
 import { cloudTexture, glowTexture, planetTexture, ringTexture } from "@/lib/solar/textures";
+import {
+  createCloudMaterial,
+  createMoonMaterial,
+  createPlanetMaterial,
+} from "@/lib/solar/planet-material";
 
 const _from = new THREE.Vector3();
 const _to = new THREE.Vector3();
@@ -27,6 +33,8 @@ const _offset = new THREE.Vector3();
 const _sph = new THREE.Spherical();
 const _world = new THREE.Vector3();
 const _cam = new THREE.Vector3();
+const _sunWorld = new THREE.Vector3();
+const _ringN = new THREE.Vector3();
 
 function SimTicker() {
   useFrame((_, dt) => {
@@ -153,7 +161,13 @@ function Sun() {
     const { paused, speed } = useHelios.getState();
     if (!paused) t.current += Math.min(dt, 0.1) * Math.min(speed, 3);
     mat.uniforms.uTime.value = t.current;
-    if (mesh.current) mesh.current.rotation.y += spinRate(sun) * (paused ? 0 : Math.min(dt, 0.1) * Math.min(speed, 2));
+    if (mesh.current) {
+      mesh.current.rotation.y += spinRate(sun) * (paused ? 0 : Math.min(dt, 0.1) * Math.min(speed, 2));
+      mesh.current.getWorldPosition(_sunWorld);
+      sim.sunX = _sunWorld.x;
+      sim.sunY = _sunWorld.y;
+      sim.sunZ = _sunWorld.z;
+    }
   });
 
   useEffect(
@@ -168,22 +182,22 @@ function Sun() {
       <mesh ref={mesh} material={mat}>
         <sphereGeometry args={[sun.radius, 64, 48]} />
       </mesh>
-      <sprite scale={[18.5, 18.5, 1]}>
+      <sprite scale={[11.5, 11.5, 1]}>
         <spriteMaterial
           map={glow}
           transparent
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          opacity={0.7}
+          opacity={0.72}
         />
       </sprite>
-      <sprite scale={[32, 32, 1]}>
+      <sprite scale={[19, 19, 1]}>
         <spriteMaterial
           map={glow}
           transparent
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          opacity={0.28}
+          opacity={0.22}
         />
       </sprite>
       <pointLight color="#ffd8a0" intensity={95} distance={260} decay={1.6} />
@@ -191,11 +205,25 @@ function Sun() {
   );
 }
 
-function Atmosphere({ radius, color }: { radius: number; color: string }) {
+function Atmosphere({
+  radius,
+  color,
+  strength = 0.55,
+  scale = 1.16,
+}: {
+  radius: number;
+  color: string;
+  strength?: number;
+  scale?: number;
+}) {
   const mat = useMemo(() => {
     const c = new THREE.Color(color);
     return new THREE.ShaderMaterial({
-      uniforms: { uColor: { value: c } },
+      uniforms: {
+        uColor: { value: c },
+        uSunPos: { value: new THREE.Vector3() },
+        uAmt: { value: strength },
+      },
       transparent: true,
       blending: THREE.AdditiveBlending,
       side: THREE.BackSide,
@@ -204,7 +232,7 @@ function Atmosphere({ radius, color }: { radius: number; color: string }) {
         varying vec3 vN;
         varying vec3 vW;
         void main() {
-          vN = normalize(normalMatrix * normal);
+          vN = normalize(mat3(modelMatrix) * normal);
           vec4 w = modelMatrix * vec4(position, 1.0);
           vW = w.xyz;
           gl_Position = projectionMatrix * viewMatrix * w;
@@ -212,16 +240,24 @@ function Atmosphere({ radius, color }: { radius: number; color: string }) {
       `,
       fragmentShader: `
         uniform vec3 uColor;
+        uniform vec3 uSunPos;
+        uniform float uAmt;
         varying vec3 vN;
         varying vec3 vW;
         void main() {
-          vec3 viewDir = normalize(cameraPosition - vW);
-          float f = pow(1.0 - abs(dot(viewDir, normalize(vN))), 2.6);
-          gl_FragColor = vec4(uColor, f * 0.55);
+          vec3 V = normalize(cameraPosition - vW);
+          vec3 L = normalize(uSunPos - vW);
+          float f = pow(1.0 - abs(dot(V, normalize(vN))), 2.4);
+          float day = smoothstep(-0.25, 0.55, dot(normalize(vN), L));
+          gl_FragColor = vec4(uColor, f * mix(0.12, uAmt, day));
         }
       `,
     });
-  }, [color]);
+  }, [color, strength]);
+
+  useFrame(() => {
+    mat.uniforms.uSunPos.value.set(sim.sunX, sim.sunY, sim.sunZ);
+  });
 
   useEffect(
     () => () => {
@@ -231,7 +267,7 @@ function Atmosphere({ radius, color }: { radius: number; color: string }) {
   );
 
   return (
-    <mesh material={mat} scale={1.18}>
+    <mesh material={mat} scale={scale}>
       <sphereGeometry args={[radius, 32, 24]} />
     </mesh>
   );
@@ -239,17 +275,24 @@ function Atmosphere({ radius, color }: { radius: number; color: string }) {
 
 function Moon({ def }: { def: MoonDef }) {
   const ref = useRef<THREE.Group>(null);
+  const mat = useMemo(() => createMoonMaterial(), []);
   useFrame(() => {
     const g = ref.current;
     if (!g) return;
     const a = (sim.time / def.periodDays) * Math.PI * 2;
     g.position.set(Math.cos(a) * def.orbitRadius, Math.sin(a) * 0.18, Math.sin(a) * def.orbitRadius);
+    mat.uniforms.uSunPos.value.set(sim.sunX, sim.sunY, sim.sunZ);
   });
+  useEffect(
+    () => () => {
+      mat.dispose();
+    },
+    [mat],
+  );
   return (
     <group ref={ref}>
-      <mesh>
-        <sphereGeometry args={[def.radius, 16, 12]} />
-        <meshStandardMaterial color={def.color} roughness={0.92} metalness={0.02} />
+      <mesh material={mat}>
+        <sphereGeometry args={[def.radius, 24, 18]} />
       </mesh>
     </group>
   );
@@ -281,14 +324,29 @@ function apparentScale(body: Body, camera: THREE.Camera, obj: THREE.Object3D): n
   obj.getWorldPosition(_world);
   camera.getWorldPosition(_cam);
   const dist = Math.max(0.001, _cam.distanceTo(_world));
-  const minR = dist * 0.016;
+  const minR = dist * 0.028;
   return THREE.MathUtils.clamp(minR / body.radius, 1, 10);
+}
+
+function atmoScale(id: BodyId): number {
+  if (id === "venus") return 1.3;
+  if (id === "earth") return 1.14;
+  if (id === "mars") return 1.07;
+  return 1.1;
+}
+
+function atmoStrength(id: BodyId): number {
+  if (id === "venus") return 0.92;
+  if (id === "earth") return 0.58;
+  if (id === "mars") return 0.26;
+  return 0.42;
 }
 
 function Planet({ body }: { body: Body }) {
   const group = useRef<THREE.Group>(null);
   const visual = useRef<THREE.Group>(null);
   const globe = useRef<THREE.Group>(null);
+  const tilt = useRef<THREE.Group>(null);
   const clouds = useRef<THREE.Mesh>(null);
   const glow = useRef<THREE.Sprite>(null);
   const pos = useMemo(() => new THREE.Vector3(), []);
@@ -299,8 +357,10 @@ function Planet({ body }: { body: Body }) {
     if (!body.rings) return null;
     return ringTexture(body.id === "saturn" ? "gold" : "ice");
   }, [body.rings, body.id]);
+  const surface = useMemo(() => createPlanetMaterial(body, map, cloudsMap), [body, map, cloudsMap]);
+  const cloudMat = useMemo(() => (cloudsMap ? createCloudMaterial(cloudsMap) : null), [cloudsMap]);
   const setFocused = useHelios((s) => s.setFocused);
-  const segs = body.kind === "terrestrial" ? 32 : 48;
+  const segs = body.kind === "terrestrial" ? 48 : 64;
   const glowScale = body.radius * (body.kind === "terrestrial" ? 5.2 : 3.4);
 
   useFrame((state, dt) => {
@@ -316,10 +376,31 @@ function Planet({ body }: { body: Body }) {
     if (globe.current) globe.current.rotation.y += spinRate(body) * spin;
     if (clouds.current) clouds.current.rotation.y += spinRate(body) * spin * 1.18;
     if (glow.current) {
-      const mat = glow.current.material as THREE.SpriteMaterial;
-      mat.opacity = THREE.MathUtils.clamp(0.18 + (s - 1) * 0.08, 0.16, 0.55);
+      const gm = glow.current.material as THREE.SpriteMaterial;
+      gm.opacity = THREE.MathUtils.clamp(0.14 + (s - 1) * 0.07, 0.12, 0.48);
+    }
+    const u = surface.uniforms;
+    u.uSunPos.value.set(sim.sunX, sim.sunY, sim.sunZ);
+    g.getWorldPosition(u.uPlanetPos.value);
+    u.uFill.value = THREE.MathUtils.smoothstep(s, 1.05, 4);
+    u.uTime.value += Math.min(dt, 0.1);
+    if (body.rings && tilt.current) {
+      _ringN.set(0, 1, 0).transformDirection(tilt.current.matrixWorld);
+      u.uRingNormal.value.copy(_ringN);
+    }
+    if (cloudMat) {
+      cloudMat.uniforms.uSunPos.value.set(sim.sunX, sim.sunY, sim.sunZ);
+      cloudMat.uniforms.uFill.value = u.uFill.value;
     }
   });
+
+  useEffect(
+    () => () => {
+      surface.dispose();
+      cloudMat?.dispose();
+    },
+    [surface, cloudMat],
+  );
 
   return (
     <group ref={group}>
@@ -334,9 +415,11 @@ function Planet({ body }: { body: Body }) {
             opacity={0.4}
           />
         </sprite>
-        <group rotation={[0, 0, body.tilt]}>
+        <group ref={tilt} rotation={[0, 0, body.tilt]}>
           <group ref={globe}>
             <mesh
+              material={surface}
+              renderOrder={4}
               onClick={(e) => {
                 e.stopPropagation();
                 setFocused(body.id);
@@ -350,26 +433,10 @@ function Planet({ body }: { body: Body }) {
               }}
             >
               <sphereGeometry args={[body.radius, segs, segs - 8]} />
-              <meshStandardMaterial
-                map={map}
-                roughness={0.58}
-                metalness={0.04}
-                emissive={body.color}
-                emissiveMap={map}
-                emissiveIntensity={0.32}
-              />
             </mesh>
-            {body.clouds && cloudsMap ? (
-              <mesh ref={clouds} scale={1.015}>
-                <sphereGeometry args={[body.radius, 32, 24]} />
-                <meshStandardMaterial
-                  map={cloudsMap}
-                  transparent
-                  opacity={0.55}
-                  depthWrite={false}
-                  roughness={1}
-                  metalness={0}
-                />
+            {cloudMat ? (
+              <mesh ref={clouds} scale={1.018} material={cloudMat}>
+                <sphereGeometry args={[body.radius, 48, 32]} />
               </mesh>
             ) : null}
           </group>
@@ -381,13 +448,20 @@ function Planet({ body }: { body: Body }) {
                 transparent
                 side={THREE.DoubleSide}
                 depthWrite={false}
-                roughness={0.6}
-                metalness={0.12}
+                roughness={0.55}
+                metalness={0.18}
               />
             </mesh>
           ) : null}
         </group>
-        {body.atmosphere ? <Atmosphere radius={body.radius} color={body.atmosphere} /> : null}
+        {body.atmosphere ? (
+          <Atmosphere
+            radius={body.radius}
+            color={body.atmosphere}
+            strength={atmoStrength(body.id)}
+            scale={atmoScale(body.id)}
+          />
+        ) : null}
         {body.moons?.map((m) => (
           <Moon key={m.name} def={m} />
         ))}
@@ -401,7 +475,7 @@ function OrbitPaths() {
   const focusedId = useHelios((s) => s.focusedId);
   const showTrails = useHelios((s) => s.showTrails);
   const curves = useMemo(
-    () => PLANETS.map((body) => ({ body, points: orbitPoints(body, 180) })),
+    () => PLANETS.map((body) => ({ body, points: orbitPoints(body, 220) })),
     [],
   );
   if (!showTrails) return null;
@@ -410,14 +484,28 @@ function OrbitPaths() {
       {curves.map(({ body, points }) => {
         const focused = body.id === focusedId;
         return (
-          <Line
-            key={body.id}
-            points={points}
-            color={body.color}
-            lineWidth={focused ? 1.4 : 0.7}
-            transparent
-            opacity={focused ? 0.55 : 0.2}
-          />
+          <group key={body.id}>
+            <Line
+              points={points}
+              color={body.color}
+              lineWidth={focused ? 10 : 6}
+              transparent
+              opacity={focused ? 0.22 : 0.12}
+              depthTest={false}
+              depthWrite={false}
+              frustumCulled={false}
+            />
+            <Line
+              points={points}
+              color={body.color}
+              lineWidth={focused ? 2.8 : 1.8}
+              transparent
+              opacity={focused ? 0.95 : 0.7}
+              depthTest={false}
+              depthWrite={false}
+              frustumCulled={false}
+            />
+          </group>
         );
       })}
     </group>
@@ -425,28 +513,45 @@ function OrbitPaths() {
 }
 
 function MotionTrail({ body }: { body: Body }) {
-  const n = 56;
+  const n = 80;
   const positions = useMemo(() => new Float32Array(n * 3), []);
-  const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    return g;
-  }, [positions]);
+  const colors = useMemo(() => {
+    const c = new Float32Array(n * 3);
+    const col = new THREE.Color(body.color);
+    for (let i = 0; i < n; i++) {
+      const t = Math.pow(i / (n - 1), 1.4);
+      c[i * 3] = col.r * t;
+      c[i * 3 + 1] = col.g * t;
+      c[i * 3 + 2] = col.b * t;
+    }
+    return c;
+  }, [body.color]);
+
   const line = useMemo(() => {
-    const mat = new THREE.LineBasicMaterial({
-      color: body.color,
+    const geom = new LineGeometry();
+    geom.setPositions(positions);
+    geom.setColors(colors);
+    const mat = new LineMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      linewidth: 2.6,
       transparent: true,
-      opacity: 0.42,
+      depthTest: false,
       depthWrite: false,
+      toneMapped: false,
     });
-    const l = new THREE.Line(geom, mat);
+    const l = new Line2(geom, mat);
     l.frustumCulled = false;
     return l;
-  }, [geom, body.color]);
+  }, [positions, colors]);
+
   const tmp = useMemo(() => new THREE.Vector3(), []);
   const primed = useRef(false);
+  const { size } = useThree();
 
   useFrame(() => {
+    const mat = line.material as LineMaterial;
+    mat.resolution.set(size.width, size.height);
     if (!useHelios.getState().showTrails) return;
     if (useHelios.getState().paused && primed.current) return;
     bodyPosition(body, sim.time, tmp);
@@ -463,16 +568,17 @@ function MotionTrail({ body }: { body: Body }) {
       positions[n * 3 - 2] = tmp.y;
       positions[n * 3 - 1] = tmp.z;
     }
-    const attr = geom.getAttribute("position") as THREE.BufferAttribute;
-    attr.needsUpdate = true;
+    const geom = line.geometry as LineGeometry;
+    geom.setPositions(positions);
+    line.computeLineDistances();
   });
 
   useEffect(
     () => () => {
-      geom.dispose();
+      line.geometry.dispose();
       (line.material as THREE.Material).dispose();
     },
-    [geom, line],
+    [line],
   );
 
   const visible = useHelios((s) => s.showTrails);

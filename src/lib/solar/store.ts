@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { BodyId } from "./bodies";
 
-const KEY = "helios-prefs-v1";
+const KEY = "helios-prefs-v2";
 
 type Prefs = {
   speed: number;
@@ -33,12 +33,14 @@ type HeliosState = {
   focusedId: BodyId;
   showLabels: boolean;
   showTrails: boolean;
+  perturbed: boolean;
   hasInteracted: boolean;
   togglePaused: () => void;
   setSpeed: (speed: number) => void;
   setFocused: (id: BodyId) => void;
   toggleLabels: () => void;
   toggleTrails: () => void;
+  togglePerturbed: () => void;
   resetView: () => void;
 };
 
@@ -56,6 +58,7 @@ export const useHelios = create<HeliosState>((set, get) => ({
   focusedId: "sun",
   showLabels: true,
   showTrails: true,
+  perturbed: true,
   hasInteracted: false,
   togglePaused: () => set((s) => ({ paused: !s.paused, hasInteracted: true })),
   setSpeed: (speed) => {
@@ -71,6 +74,7 @@ export const useHelios = create<HeliosState>((set, get) => ({
     set((s) => ({ showTrails: !s.showTrails, hasInteracted: true }));
     persist(get());
   },
+  togglePerturbed: () => set((s) => ({ perturbed: !s.perturbed, hasInteracted: true })),
   resetView: () => set({ focusedId: "sun", hasInteracted: true }),
 }));
 
