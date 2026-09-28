@@ -209,6 +209,11 @@ Wire `window.__controlsTest` from the game loop when `import.meta.env.DEV` or a
 
 ### 5c. Automated smoke (run it)
 
+> The `http://127.0.0.1:8080/` URLs below are Grok's sandbox live-preview
+> contract — platform behavior, unchanged. On your own machine this repo's dev
+> server runs on 8090 per the port map, so smoke-test locally at
+> `http://127.0.0.1:8090/` instead.
+
 Drive the §5b probe with the preinstalled **`agent-browser`** CLI — that is the
 first move, not a hand-written script. **A thrown `eval` exits non-zero; a
 merely falsy one does not**, so assert by throwing. Run it as one `batch` — one

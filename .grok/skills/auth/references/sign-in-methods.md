@@ -35,6 +35,12 @@ Use **only** these three — no other method is supported:
   `127.0.0.1` / `[::1]`). Open the app at one of those origins (not a random
   host/port).
 
+> **Port map note:** the loopback-on-8080 origins above are the Grok sandbox
+> template contract — unchanged on the platform. This repo's port map moved
+> local dev to **8090** and its `trustedOrigins` moved with it: on your own
+> machine open the app at `localhost:8090` (or the `127.0.0.1` / `[::1]`
+> loopback forms of 8090), not the sandbox's 8080.
+
 Do **NOT** add or use anything else: no other social / OAuth providers (GitHub,
 Apple, Discord, Microsoft, Facebook, …), and no magic links, passkeys, one-time
 codes / OTP, phone / SMS, or anonymous sign-in.

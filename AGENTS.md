@@ -47,6 +47,12 @@ their machine.
   streams it into the live preview, which updates as you edit and save. It is
   the user's **entire** view of your work: success = app **running on
   `0.0.0.0:8080`**, **verified by you**, dev server **left up**.
+- **Port map note:** the 8080 contract above is Grok's sandbox platform
+  behavior — non-negotiable *in the sandbox*, and it stays that way. On your
+  own machine this repo's dev server runs on **8090** per the port map (the
+  `dev` script's `--port` flag overrides `vite.config`'s `server.port`
+  locally). Local dev follows the port map; the sandbox contract above is
+  unchanged.
 - Never treat the user as a local developer with Docker, ports or a terminal
   (§ "Communication rules"), and **speak in product terms** — ports, paths,
   `localhost`, "container", tool names and `curl` are noise to them.
@@ -112,6 +118,11 @@ it with the same priority as this file.
 - **`/workspace`** is the project root; Linux container, **Node 22**.
 - The app **must listen on `0.0.0.0:8080`** — the preview proxy prefers a server
   bound on all interfaces. Don't bind loopback-only; don't pick another port.
+- **"Don't pick another port" is the Grok sandbox contract, not a local-dev
+  rule:** in the sandbox the preview proxy auto-discovers `0.0.0.0:8080` and
+  that is non-negotiable there. On your own machine this repo serves on
+  **8090** per the port map; the `startup.sh` probe/bind rules below still
+  target 8080 because they run in the sandbox.
 - The sandbox may be stopped or replaced; **`/workspace/startup.sh`** is the
   restart contract you own.
 
