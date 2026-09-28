@@ -88,6 +88,17 @@ export function projectRoot() {
 }
 
 /**
+ * Whether `spawn` needs a shell for a bare command like `vite` or `npm`.
+ * On Windows those resolve to `.cmd` shims, which `spawn` cannot execute
+ * without a shell — `spawn vite ENOENT` otherwise. Exported for tests;
+ * `process.platform` is immutable, so the win32 branch is only exercised
+ * through the `platform` argument.
+ */
+export function needsSpawnShell(platform = process.platform) {
+  return platform === "win32";
+}
+
+/**
  * Whether `moduleUrl` is the script node was asked to run.
  *
  * Both sides are resolved through symlinks: node realpaths `import.meta.url`
@@ -111,7 +122,11 @@ function main(argv) {
     process.exit(2);
   }
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const child = spawn(command, args, {
+    stdio: "inherit",
+    env,
+    shell: needsSpawnShell(),
+  });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import {
   APP_ENV_REL_PATH,
   mergeAppEnv,
+  needsSpawnShell,
   parseAppEnv,
   projectRoot,
   readAppEnv,
@@ -111,6 +112,17 @@ test("a signal-killed command is never reported as success", async () => {
     ]),
     (err) => err.signal === "SIGTERM" || err.code !== 0,
   );
+});
+
+test("a shell is used for bare commands on win32 only", () => {
+  // On Windows, bare `vite`/`npm` resolve to .cmd shims that spawn cannot
+  // execute without a shell — `[with-app-env] failed to run vite: spawn vite
+  // ENOENT`. On other platforms a shell would only add quoting surprises, so
+  // the option stays off there.
+  assert.equal(needsSpawnShell("win32"), true);
+  assert.equal(needsSpawnShell("darwin"), false);
+  assert.equal(needsSpawnShell("linux"), false);
+  assert.equal(needsSpawnShell(), process.platform === "win32");
 });
 
 test("the CLI still runs when invoked through a symlinked path", async () => {
