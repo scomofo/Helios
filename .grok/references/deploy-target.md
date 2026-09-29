@@ -35,6 +35,12 @@ config:
   output under `vite preview`;
 - mounts `grokPwaPlugin()`.
 
+> **Port map note:** the 8080 dev-port contract above describes the Grok
+> sandbox template — the live-preview contract there is unchanged. This repo's
+> local dev binds `0.0.0.0:8090` per the port map (`npm run dev` passes
+> `--port 8090`, which overrides the config locally); the `127.0.0.1:8081`
+> built-output QA pin is untouched.
+
 If you edit it, preserve both port contracts, the build/preview-gated nitro
 plugin **including its `serverDir: "./server"` option** (without it the deployed
 app loses the Home Screen install page), and `grokPwaPlugin()`.
